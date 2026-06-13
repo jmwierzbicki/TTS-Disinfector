@@ -231,6 +231,12 @@ check('dismissing residual → Healed with no prompt', rHealed.label === 'Healed
 const dangerPrompt = buildPromptForGroup(approvedMixed, mixedScript, rDangerous.prompt!);
 check('dangerous-methods prompt focuses on the network call',
   /internet|web address/i.test(dangerPrompt) && dangerPrompt.includes('track.example'));
+check('dangerous-methods prompt does NOT re-embed the removed worm',
+  !dangerPrompt.includes('--[[Object base code]]') && dangerPrompt.includes('REMAINING AFTER'));
+// sanity: a standalone (non-worm) dangerous script still embeds its full script as-is
+const webPrompt2 = buildPromptForGroup(webGroup, webScript, { kind: 'pattern', patternId: 'webrequest-usage' });
+check('non-worm dangerous prompt labels it SCRIPT (no worm to remove)',
+  webPrompt2.includes('SCRIPT START') && !webPrompt2.includes('REMAINING AFTER'));
 
 // ── error handling ────────────────────────────────────────────────
 const throws = (fn: () => void) => { try { fn(); return null; } catch (e) { return e; } };

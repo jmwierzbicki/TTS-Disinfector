@@ -56,9 +56,14 @@ export function buildPromptForGroup(group: ScriptGroup, script: string, focus: P
     instruction = patternById(focus.patternId)?.aiInstruction?.(ctx) ?? { task: DEFAULT_TASK };
   }
 
-  const useCleansed = instruction.include === 'cleansed';
+  // Only the "explain the worm" prompt embeds the worm itself. Every other focus
+  // is about the code the player keeps, so it embeds the cleansed script — never
+  // re-including a worm payload that has already been removed. (For a script with
+  // no worm, the cleansed form equals the original, so nothing changes.)
+  const useCleansed = focus.kind !== 'worm';
   const body = (useCleansed ? ctx.cleansedScript : ctx.script).trim();
-  const label = useCleansed ? 'CODE REMAINING AFTER THE WORM WAS REMOVED' : 'SCRIPT';
+  const wormRemoved = useCleansed && body !== ctx.script.trim();
+  const label = wormRemoved ? 'CODE REMAINING AFTER THE WORM WAS REMOVED' : 'SCRIPT';
 
   const focusName = patternById(focusPatternId)?.name ?? group.findings[0].patternName;
   // Note the other things this script was flagged for, so the answer is complete.
