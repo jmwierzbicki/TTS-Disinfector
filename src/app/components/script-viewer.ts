@@ -44,7 +44,7 @@ export class ScriptViewer {
     effect(() => {
       const g = this.group();
       this.loading.set(true);
-      void this.analysis.getScript(g.representativeNodeId).then((s) => {
+      void this.analysis.getScript(g.representativeDocId, g.representativeNodeId).then((s) => {
         this.script.set(s);
         this.loading.set(false);
         // Once the save has been cleansed, open straight to the Cleansed view —
@@ -80,6 +80,12 @@ export class ScriptViewer {
   protected readonly markedCount = computed(() => this.spans().filter((s) => s.end > s.start).length);
 
   protected readonly copied = signal(false);
+
+  /** Batch mode: show which file each occurrence is in. */
+  protected readonly multiFile = computed(() => (this.analysis.result()?.documents.length ?? 0) > 1);
+  protected fileNameOf(occ: { docId: number }): string {
+    return this.analysis.result()?.documents[occ.docId]?.fileName ?? '';
+  }
 
   /** The section's current resolution (drives which prompt to copy). */
   protected readonly resolution = computed(() =>

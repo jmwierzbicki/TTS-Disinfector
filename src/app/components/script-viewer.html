@@ -95,14 +95,15 @@
         }
       } @else {
         <p class="text-xs text-mist-400 mb-3">
-          This exact script appears on {{ group().occurrences.length | number }} object{{ group().occurrences.length === 1 ? '' : 's' }} in the save:
+          This exact script appears on {{ group().occurrences.length | number }} object{{ group().occurrences.length === 1 ? '' : 's' }}{{ multiFile() ? ' across your files' : ' in the save' }}:
         </p>
         <ul class="space-y-1.5">
-          @for (occ of group().occurrences; track occ.nodeId; let i = $index) {
+          @for (occ of group().occurrences; track occ.docId + ':' + occ.nodeId; let i = $index) {
             <li class="flex items-start gap-2.5 text-sm rounded-lg px-2.5 py-1.5 hover:bg-white/4">
               <span class="select-none text-xs text-mist-600 font-mono tabular-nums pt-0.5 w-8 shrink-0 text-right">{{ i + 1 }}</span>
               <svg class="size-4 shrink-0 mt-0.5 text-mist-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
               <span class="font-mono text-mist-200 break-all">
+                @if (multiFile()) { <span class="text-electric-300">{{ fileNameOf(occ) }}</span><span class="text-mist-600"> › </span> }
                 @for (segment of occ.pathSegments; track $index; let last = $last) {
                   <span [class.text-white]="last">{{ segment }}</span>@if (!last) {<span class="text-mist-600"> › </span>}
                 }

@@ -6,8 +6,9 @@
       Disinfect your <span class="gradient-text">TTS saves</span>
     </h1>
     <p class="mt-4 text-base sm:text-lg text-mist-400 max-w-xl mx-auto">
-      Scans every scripted object in a Tabletop Simulator save — bags in bags in decks —
+      Scans every scripted object in a Tabletop Simulator save or saved object — bags in bags in decks —
       for the self-replicating Lua worm, and removes it without touching your own code.
+      Drop a single file or a whole batch of saved objects at once.
     </p>
   </div>
 
@@ -46,9 +47,9 @@
     (keydown.space)="$event.preventDefault(); fileInput.click()"
     tabindex="0"
     role="button"
-    aria-label="Upload a Tabletop Simulator save file"
+    aria-label="Upload Tabletop Simulator save or saved-object files"
   >
-    <input #fileInput type="file" accept=".json,application/json" class="hidden" (change)="onFilePicked($event)">
+    <input #fileInput type="file" accept=".json,application/json" multiple class="hidden" (change)="onFilePicked($event)">
 
     <div class="flex flex-col items-center px-6 py-14 sm:py-20 text-center select-none">
       <div class="relative mb-6">
@@ -61,10 +62,10 @@
       </div>
 
       <p class="text-lg font-semibold text-white">
-        Drop your save file here
+        Drop your save or saved-object files here
       </p>
       <p class="mt-2 text-sm text-mist-400">
-        or <span class="text-electric-300 font-medium">click to browse</span>
+        one file or many · <span class="text-electric-300 font-medium">click to browse</span>
         &nbsp;·&nbsp; or paste raw JSON with
         <kbd class="px-1.5 py-0.5 rounded-md border border-white/15 bg-white/5 font-mono text-xs text-mist-200">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded-md border border-white/15 bg-white/5 font-mono text-xs text-mist-200">V</kbd>
       </p>

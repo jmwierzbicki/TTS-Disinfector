@@ -2,11 +2,15 @@
  * Node smoke test for the pure analysis engine (run: npx tsx tools/analyzer.test.ts).
  * Uses the real worm source to verify detection, cleansing, and save walking.
  */
-import { parseSave, runPatterns, analyzeParsedSave, cleanseSave, cleanseScript, TtsParseError } from '../src/app/core/analyzer';
+import { parseSave, runPatterns, analyzeDocuments, cleanseSave, cleanseDocuments, cleanseScript, TtsParseError, type ParsedSave } from '../src/app/core/analyzer';
 import { THREAT_PATTERNS, patternById } from '../src/app/core/threat-patterns';
 import { highlightLua } from '../src/app/core/lua-highlight';
 import { buildPromptForGroup } from '../src/app/core/prompt-builder';
 import { resolveGroup } from '../src/app/core/resolution';
+
+// Single-document shim so the existing assertions read cleanly.
+const analyzeParsedSave = (parsed: ParsedSave, fileName: string, _byteSize: number, hashes: ReadonlySet<string>, prog: (p: number, t: number) => void) =>
+  analyzeDocuments([{ parsed, fileName, byteSize: 1 }], [], hashes, prog);
 
 // The actual worm, verbatim (the only backslash sequence in it is the Lua "\n\n").
 const WORM =
@@ -239,6 +243,31 @@ check('dangerous-methods prompt does NOT re-embed the removed worm',
 const webPrompt2 = buildPromptForGroup(webGroup, webScript, { kind: 'pattern', patternId: 'webrequest-usage' });
 check('non-worm dangerous prompt labels it SCRIPT (no worm to remove)',
   webPrompt2.includes('SCRIPT START') && !webPrompt2.includes('REMAINING AFTER'));
+
+// ── batch (multi-document) analysis + cleanse ─────────────────────
+// Two saved-object files, each carrying the identical pure worm → one aggregated group.
+const objA = { SaveName: 'Token A', ObjectStates: [{ Name: 'Custom_Token', Nickname: 'Alpha', GUID: 'oa', LuaScript: INFECTED_PURE }] };
+const objB = { SaveName: 'Token B', ObjectStates: [{ Name: 'Custom_Token', Nickname: 'Beta', GUID: 'ob', LuaScript: INFECTED_PURE }] };
+const docs = [
+  { parsed: parseSave(JSON.stringify(objA)), fileName: 'tokenA.json', byteSize: 10 },
+  { parsed: parseSave(JSON.stringify(objB)), fileName: 'tokenB.json', byteSize: 10 },
+];
+const batch = await analyzeDocuments(docs, [], new Set(), () => {});
+check('batch reports both documents', batch.documents.length === 2);
+check('batch tags document file names', batch.documents[0].fileName === 'tokenA.json' && batch.documents[1].fileName === 'tokenB.json');
+const batchWorm = batch.groups.find(g => g.severity === 'critical')!;
+check('identical worm across files aggregates into one group', batch.groups.length === 1);
+check('aggregated occurrences span both files',
+  batchWorm.occurrences.some(o => o.docId === 0) && batchWorm.occurrences.some(o => o.docId === 1),
+  batchWorm.occurrences.map(o => o.docId).join(','));
+check('batch infectedObjects counts each file', batch.infectedObjects === 2, String(batch.infectedObjects));
+
+const batchCleanse = cleanseDocuments(docs);
+check('batch cleanse returns one cleaned file per input', batchCleanse.files.length === 2);
+check('batch cleanse file names preserved', batchCleanse.files.map(f => f.fileName).join(',') === 'tokenA.json,tokenB.json');
+check('batch cleanse removed the worm from both files',
+  batchCleanse.cleansedCount === 2 &&
+  batchCleanse.files.every(f => !f.json.includes('--[[Object base code]]')));
 
 // ── error handling ────────────────────────────────────────────────
 const throws = (fn: () => void) => { try { fn(); return null; } catch (e) { return e; } };

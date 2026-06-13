@@ -15,7 +15,8 @@ self-replicating Lua worm and removes it — without touching your own scripts.
 
 ## Features
 
-- **Three input methods** — drag & drop a `.json` save, click to pick a file, or paste raw JSON with `Ctrl+V`.
+- **Three input methods** — drag & drop `.json` file(s), click to pick files (multi-select), or paste raw JSON with `Ctrl+V`.
+- **Saves and saved objects, one or many** — works on both TTS save files and saved-object `.json` files. Drop a single file or a whole batch at once: identical scripts aggregate across files, each detection shows its file name, and a batch cleanse downloads a ZIP of all cleaned files. Unreadable files are skipped and reported, not fatal.
 - **Deep recursive scan** — walks `ObjectStates`, `ContainedObjects` (bags in bags in decks, to any depth), object `States`, and the Global script.
 - **Web Worker analysis** — multi-megabyte saves with thousands of objects never freeze the UI; a progress bar tracks the scan.
 - **Identical-script aggregation** — when the same script appears on many objects (the worm copies itself everywhere), it is reported **once** with an expandable ×N list of every object that carries it, instead of repeating the same finding per object.

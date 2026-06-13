@@ -1,8 +1,10 @@
 import { Component, HostListener, inject, signal } from '@angular/core';
 import { AnalysisService } from '../core/analysis.service';
 import { THREAT_PATTERNS } from '../core/threat-patterns';
+import type { InputFile } from '../core/models';
 
 const MAX_FILE_BYTES = 250 * 1024 * 1024; // refuse absurd inputs with a clear message
+const MAX_FILES = 500; // sanity cap for a single batch
 
 @Component({
   selector: 'app-upload',
@@ -27,52 +29,65 @@ export class Upload {
   protected async onDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
     this.dragOver.set(false);
-    const file = event.dataTransfer?.files?.[0];
-    if (file) {
-      await this.readFile(file);
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      await this.readFiles([...files]);
       return;
     }
     const text = event.dataTransfer?.getData('text');
-    if (text) await this.submitText(text, 'dropped-save.json');
+    if (text) await this.submit([{ name: 'dropped-save.json', text }]);
   }
 
   protected async onFilePicked(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) await this.readFile(file);
+    if (input.files && input.files.length > 0) await this.readFiles([...input.files]);
     input.value = '';
   }
 
   @HostListener('window:paste', ['$event'])
   protected async onPaste(event: ClipboardEvent): Promise<void> {
     if (this.analysis.phase() !== 'idle') return;
-    const file = event.clipboardData?.files?.[0];
-    if (file) {
-      await this.readFile(file);
+    const files = event.clipboardData?.files;
+    if (files && files.length > 0) {
+      await this.readFiles([...files]);
       return;
     }
     const text = event.clipboardData?.getData('text');
-    if (text?.trim()) await this.submitText(text, 'pasted-save.json');
+    if (text?.trim()) await this.submit([{ name: 'pasted-save.json', text }]);
   }
 
-  private async readFile(file: File): Promise<void> {
+  private async readFiles(fileList: File[]): Promise<void> {
     this.localError.set(null);
-    if (file.size > MAX_FILE_BYTES) {
-      this.localError.set(
-        `"${file.name}" is ${(file.size / 1024 / 1024).toFixed(0)} MB — larger than the ${MAX_FILE_BYTES / 1024 / 1024} MB limit. TTS saves don't get this big; this is probably not a save file.`,
-      );
+    const files = fileList.filter((f) => /\.json$/i.test(f.name) || f.type === 'application/json' || fileList.length === 1);
+    if (files.length === 0) {
+      this.localError.set('No .json files found. Drop Tabletop Simulator save or saved-object .json files.');
       return;
     }
-    try {
-      const text = await file.text();
-      await this.submitText(text, file.name);
-    } catch {
-      this.localError.set(`Couldn't read "${file.name}". Is it a regular text file?`);
+    if (files.length > MAX_FILES) {
+      this.localError.set(`That's ${files.length} files — please scan at most ${MAX_FILES} at a time.`);
+      return;
     }
+
+    const inputs: InputFile[] = [];
+    for (const file of files) {
+      if (file.size > MAX_FILE_BYTES) {
+        this.localError.set(
+          `"${file.name}" is ${(file.size / 1024 / 1024).toFixed(0)} MB — larger than the ${MAX_FILE_BYTES / 1024 / 1024} MB limit, so it's probably not a save file.`,
+        );
+        return;
+      }
+      try {
+        inputs.push({ name: file.name, text: await file.text() });
+      } catch {
+        this.localError.set(`Couldn't read "${file.name}". Is it a regular text file?`);
+        return;
+      }
+    }
+    await this.submit(inputs);
   }
 
-  private async submitText(text: string, fileName: string): Promise<void> {
+  private async submit(files: InputFile[]): Promise<void> {
     this.localError.set(null);
-    await this.analysis.analyze(text, fileName);
+    await this.analysis.analyze(files);
   }
 }

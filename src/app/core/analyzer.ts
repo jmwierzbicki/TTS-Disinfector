@@ -7,7 +7,15 @@
  * cleansed.
  */
 import { THREAT_PATTERNS, type ThreatPattern, type ThreatDetection } from './threat-patterns';
-import type { AnalysisResult, Finding, Occurrence, ScriptGroup } from './models';
+import type {
+  AnalysisResult,
+  CleanseOutcome,
+  CleansedFile,
+  DocumentInfo,
+  Finding,
+  Occurrence,
+  ScriptGroup,
+} from './models';
 
 /** One scripted node in the save, addressable for cleansing. */
 export interface ScriptNode {
@@ -164,112 +172,141 @@ export function runPatterns(script: string): PatternHit[] {
   return hits;
 }
 
-export async function analyzeParsedSave(
-  parsed: ParsedSave,
-  fileName: string,
-  byteSize: number,
+/** A parsed file ready for analysis/cleansing. */
+export interface AnalyzableDoc {
+  parsed: ParsedSave;
+  fileName: string;
+  byteSize: number;
+}
+
+/**
+ * Analyze a batch of documents (one or many files). Identical scripts aggregate
+ * into a single group whose occurrences span every file, and each occurrence is
+ * tagged with the document (file) it came from.
+ */
+export async function analyzeDocuments(
+  docs: AnalyzableDoc[],
+  skippedFiles: { fileName: string; reason: string }[],
   safeHashes: ReadonlySet<string>,
   onProgress: (processed: number, total: number) => void,
 ): Promise<AnalysisResult> {
   const started = performance.now();
   const hashCache = new Map<string, string>();
-  const total = parsed.nodes.length;
-  const criticalNodes = new Set<number>();
-  const nodesWithFindings = new Set<number>();
-
-  /** One group per unique script hash. */
   const groupsByHash = new Map<string, ScriptGroup>();
 
-  for (let i = 0; i < parsed.nodes.length; i++) {
-    const node = parsed.nodes[i];
+  const total = docs.reduce((n, d) => n + d.parsed.nodes.length, 0);
+  let processed = 0;
+  let totalObjects = 0;
+  let scriptedObjects = 0;
+  let byteSize = 0;
+  // Keyed `${docId}:${nodeId}` so identical scripts in different files count separately.
+  const criticalKeys = new Set<string>();
+  const nodesWithFindings = new Set<string>();
+  const documents: DocumentInfo[] = [];
 
-    let hash = hashCache.get(node.script);
-    if (!hash) {
-      hash = await hashScript(node.script);
-      hashCache.set(node.script, hash);
-    }
-    node.hash = hash;
+  for (let docId = 0; docId < docs.length; docId++) {
+    const { parsed, fileName, byteSize: bs } = docs[docId];
+    byteSize += bs;
+    totalObjects += parsed.totalObjects;
+    scriptedObjects += parsed.nodes.length;
+    documents.push({
+      fileName,
+      saveName: parsed.saveName,
+      objectCount: parsed.totalObjects,
+      scriptedCount: parsed.nodes.length,
+    });
 
-    const hits = runPatterns(node.script);
-    if (hits.length === 0) {
-      if (i % 20 === 0 || i === total - 1) onProgress(i + 1, total);
-      continue;
-    }
+    for (const node of parsed.nodes) {
+      let hash = hashCache.get(node.script);
+      if (!hash) {
+        hash = await hashScript(node.script);
+        hashCache.set(node.script, hash);
+      }
+      node.hash = hash;
 
-    nodesWithFindings.add(node.nodeId);
-    if (hits.some((h) => h.pattern.severity === 'critical')) criticalNodes.add(node.nodeId);
-
-    const occurrence: Occurrence = {
-      nodeId: node.nodeId,
-      pathSegments: node.pathSegments,
-      guid: node.guid,
-    };
-
-    // First object with this exact script creates the group; later identical
-    // scripts just add their object to the existing group's occurrence list.
-    let group = groupsByHash.get(hash);
-    if (!group) {
-      const trusted = safeHashes.has(hash);
-      const findings: Finding[] = hits.map(({ pattern, detection }) => ({
-        patternId: pattern.id,
-        patternName: pattern.name,
-        severity: pattern.severity,
-        description: pattern.description,
-        detail: detection.detail,
-        excerpt: detection.excerpt,
-        cleansable: !!pattern.cleanse,
-        extraCodeOutsidePayload: !!detection.extraCodeOutsidePayload,
-      }));
-      const cleansable = findings.some((f) => f.cleansable);
-      const extraCode = findings.some((f) => f.extraCodeOutsidePayload);
-
-      // For worm+extra groups, hash the leftover so the "approve remaining code"
-      // decision can be remembered (and pre-applied if already trusted).
-      let cleansedScriptHash: string | undefined;
-      let approvedExtra = false;
-      if (cleansable && extraCode) {
-        cleansedScriptHash = await hashScript(cleanseScript(node.script));
-        approvedExtra = safeHashes.has(cleansedScriptHash);
+      const hits = runPatterns(node.script);
+      processed++;
+      if (hits.length === 0) {
+        if (processed % 20 === 0 || processed === total) onProgress(processed, total);
+        continue;
       }
 
-      group = {
-        scriptHash: hash,
-        scriptLength: node.script.length,
-        severity: highestSeverity(findings),
-        findings,
-        occurrences: [occurrence],
-        representativeNodeId: node.nodeId,
-        // A worm (critical) can never be trusted away.
-        trusted: trusted && !findings.some((f) => f.severity === 'critical'),
-        cleansable,
-        extraCodeOutsidePayload: extraCode,
-        cleansedScriptHash,
-        approvedExtra,
+      const key = `${docId}:${node.nodeId}`;
+      nodesWithFindings.add(key);
+      if (hits.some((h) => h.pattern.severity === 'critical')) criticalKeys.add(key);
+
+      const occurrence: Occurrence = {
+        docId,
+        nodeId: node.nodeId,
+        pathSegments: node.pathSegments,
+        guid: node.guid,
       };
-      groupsByHash.set(hash, group);
-    } else {
-      group.occurrences.push(occurrence);
+
+      // First object with this exact script creates the group; later identical
+      // scripts (in any file) just add their object to the occurrence list.
+      let group = groupsByHash.get(hash);
+      if (!group) {
+        const trusted = safeHashes.has(hash);
+        const findings: Finding[] = hits.map(({ pattern, detection }) => ({
+          patternId: pattern.id,
+          patternName: pattern.name,
+          severity: pattern.severity,
+          description: pattern.description,
+          detail: detection.detail,
+          excerpt: detection.excerpt,
+          cleansable: !!pattern.cleanse,
+          extraCodeOutsidePayload: !!detection.extraCodeOutsidePayload,
+        }));
+        const cleansable = findings.some((f) => f.cleansable);
+        const extraCode = findings.some((f) => f.extraCodeOutsidePayload);
+
+        let cleansedScriptHash: string | undefined;
+        let approvedExtra = false;
+        if (cleansable && extraCode) {
+          cleansedScriptHash = await hashScript(cleanseScript(node.script));
+          approvedExtra = safeHashes.has(cleansedScriptHash);
+        }
+
+        group = {
+          scriptHash: hash,
+          scriptLength: node.script.length,
+          severity: highestSeverity(findings),
+          findings,
+          occurrences: [occurrence],
+          representativeDocId: docId,
+          representativeNodeId: node.nodeId,
+          trusted: trusted && !findings.some((f) => f.severity === 'critical'),
+          cleansable,
+          extraCodeOutsidePayload: extraCode,
+          cleansedScriptHash,
+          approvedExtra,
+        };
+        groupsByHash.set(hash, group);
+      } else {
+        group.occurrences.push(occurrence);
+      }
+
+      if (processed % 20 === 0 || processed === total) onProgress(processed, total);
     }
-
-    if (i % 20 === 0 || i === total - 1) onProgress(i + 1, total);
   }
+  onProgress(total, total);
 
-  const severityRank: Record<string, number> = { critical: 0, warning: 1, info: 2 };
   const groups = [...groupsByHash.values()].sort(
     (a, b) =>
-      severityRank[a.severity] - severityRank[b.severity] ||
+      SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
       b.occurrences.length - a.occurrences.length ||
+      a.representativeDocId - b.representativeDocId ||
       a.representativeNodeId - b.representativeNodeId,
   );
 
   return {
-    fileName,
-    saveName: parsed.saveName,
-    totalObjects: parsed.totalObjects,
-    scriptedObjects: parsed.nodes.length,
+    documents,
+    skippedFiles,
+    totalObjects,
+    scriptedObjects,
     groups,
-    cleanScripted: parsed.nodes.length - nodesWithFindings.size,
-    infectedObjects: criticalNodes.size,
+    cleanScripted: scriptedObjects - nodesWithFindings.size,
+    infectedObjects: criticalKeys.size,
     durationMs: Math.round(performance.now() - started),
     byteSize,
   };
@@ -330,6 +367,22 @@ export function cleanseSave(parsed: ParsedSave): {
     cleansedCount,
     extraCodePaths,
   };
+}
+
+/** Cleanse every document and collect the cleaned JSON + manual-review paths per file. */
+export function cleanseDocuments(docs: AnalyzableDoc[]): CleanseOutcome {
+  const files: CleansedFile[] = [];
+  let cleansedCount = 0;
+  const extraCodePaths: { fileName: string; pathSegments: string[] }[] = [];
+
+  for (const { parsed, fileName } of docs) {
+    const r = cleanseSave(parsed);
+    files.push({ fileName, json: r.json, cleansedCount: r.cleansedCount });
+    cleansedCount += r.cleansedCount;
+    for (const p of r.extraCodePaths) extraCodePaths.push({ fileName, pathSegments: p });
+  }
+
+  return { files, cleansedCount, extraCodePaths };
 }
 
 /** Compute the cleansed form of a single script (for the viewer's diff tab). */

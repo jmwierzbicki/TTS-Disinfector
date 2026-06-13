@@ -8,7 +8,7 @@ import { buildPromptForGroup } from '../core/prompt-builder';
 import { copyToClipboard } from '../core/clipboard.util';
 import { cleanseScript } from '../core/analyzer';
 import { resolveGroup, hasResidualToDismiss, type Resolution } from '../core/resolution';
-import type { ScriptGroup } from '../core/models';
+import type { Occurrence, ScriptGroup } from '../core/models';
 import type { Severity } from '../core/threat-patterns';
 
 type SeverityFilter = Severity | 'all';
@@ -37,6 +37,14 @@ export class Results {
 
   protected readonly result = this.analysis.result;
   protected readonly cleanseOutcome = this.analysis.cleanseOutcome;
+
+  /** Batch mode: more than one file was scanned. */
+  protected readonly multiFile = computed(() => (this.result()?.documents.length ?? 0) > 1);
+
+  /** File name for an occurrence (used to show where each detection lives in batch mode). */
+  protected fileNameOf(occ: Occurrence): string {
+    return this.result()?.documents[occ.docId]?.fileName ?? '';
+  }
 
   /** Groups the user hasn't trusted away. */
   protected readonly activeGroups = computed(() => this.result()?.groups.filter((g) => !g.trusted) ?? []);
@@ -107,7 +115,7 @@ export class Results {
   protected async copyPrompt(group: ScriptGroup): Promise<void> {
     const focus = this.resolution(group).prompt;
     if (!focus) return;
-    const script = await this.analysis.getScript(group.representativeNodeId);
+    const script = await this.analysis.getScript(group.representativeDocId, group.representativeNodeId);
     const ok = await copyToClipboard(buildPromptForGroup(group, script, focus));
     if (!ok) return;
     this.copiedHash.set(group.scriptHash);
@@ -163,7 +171,7 @@ export class Results {
   /** Trust the leftover code's signature and mark the group's remaining code approved. */
   protected async approveExtraCode(group: ScriptGroup): Promise<void> {
     if (!group.cleansedScriptHash) return;
-    const original = await this.analysis.getScript(group.representativeNodeId);
+    const original = await this.analysis.getScript(group.representativeDocId, group.representativeNodeId);
     const leftover = cleanseScript(original);
     const label = group.occurrences[0]?.pathSegments.at(-1) ?? 'Script';
     await this.signatures.trust({
@@ -201,8 +209,8 @@ export class Results {
     }
   }
 
-  protected download(): void {
-    this.analysis.download();
+  protected async download(): Promise<void> {
+    await this.analysis.download();
   }
 
   protected scanAgain(): void {

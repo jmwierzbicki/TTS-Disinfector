@@ -1,11 +1,23 @@
 import { Injectable, inject, signal } from '@angular/core';
-import type { AnalysisProgress, AnalysisResult, CleanseOutcome, WorkerRequest, WorkerResponse } from './models';
+import type {
+  AnalysisProgress,
+  AnalysisResult,
+  CleanseOutcome,
+  InputFile,
+  WorkerRequest,
+  WorkerResponse,
+} from './models';
 import { SignatureStoreService } from './signature-store.service';
 
 export type AppPhase = 'idle' | 'analyzing' | 'results';
 
 /** Omit that distributes over union members (plain Omit collapses the union). */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** `My Save.json` → `My Save.cleaned` (caller appends the extension). */
+function cleanedName(fileName: string): string {
+  return fileName.replace(/\.json$/i, '') + '.cleaned';
+}
 
 /**
  * Owns the analysis Web Worker and exposes the app's state as signals.
@@ -58,16 +70,16 @@ export class AnalysisService {
     });
   }
 
-  async analyze(jsonText: string, fileName: string): Promise<void> {
+  async analyze(files: InputFile[]): Promise<void> {
     this.phase.set('analyzing');
     this.progress.set(null);
     this.error.set(null);
     this.result.set(null);
+    this.cleanseOutcome.set(null);
     try {
       const response = await this.request({
         type: 'analyze',
-        jsonText,
-        fileName,
+        files,
         safeHashes: this.signatureStore.safeHashes(),
       });
       if (response.type === 'result') {
@@ -91,22 +103,44 @@ export class AnalysisService {
     return response.outcome;
   }
 
-  /** Step 2: download the already-cleansed JSON as a copy. */
-  download(): void {
+  /** Step 2: download the cleaned output — one JSON for a single file, a ZIP for a batch. */
+  async download(): Promise<void> {
     const outcome = this.cleanseOutcome();
-    if (!outcome) return;
-    const base = (this.result()?.fileName ?? 'save.json').replace(/\.json$/i, '');
-    const blob = new Blob([outcome.json], { type: 'application/json' });
+    if (!outcome || outcome.files.length === 0) return;
+
+    if (outcome.files.length === 1) {
+      const file = outcome.files[0];
+      this.saveBlob(new Blob([file.json], { type: 'application/json' }), `${cleanedName(file.fileName)}.json`);
+      return;
+    }
+
+    // Batch → ZIP (jszip is lazy-loaded so it isn't in the initial bundle).
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    const used = new Map<string, number>();
+    for (const file of outcome.files) {
+      let name = `${cleanedName(file.fileName)}.json`;
+      // Avoid collisions if two uploads share a name.
+      const n = used.get(name) ?? 0;
+      used.set(name, n + 1);
+      if (n > 0) name = name.replace(/\.json$/i, `(${n}).json`);
+      zip.file(name, file.json);
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    this.saveBlob(blob, 'tts-disinfected.zip');
+  }
+
+  private saveBlob(blob: Blob, fileName: string): void {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `${base}.cleaned.json`;
+    anchor.download = fileName;
     anchor.click();
     URL.revokeObjectURL(url);
   }
 
-  async getScript(nodeId: number): Promise<string> {
-    const response = await this.request({ type: 'getScript', nodeId });
+  async getScript(docId: number, nodeId: number): Promise<string> {
+    const response = await this.request({ type: 'getScript', docId, nodeId });
     return response.type === 'script' ? response.script : '';
   }
 
