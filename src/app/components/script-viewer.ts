@@ -44,10 +44,14 @@ export class ScriptViewer {
     effect(() => {
       const g = this.group();
       this.loading.set(true);
-      this.tab.set('original');
       void this.analysis.getScript(g.representativeNodeId).then((s) => {
         this.script.set(s);
         this.loading.set(false);
+        // Once the save has been cleansed, open straight to the Cleansed view —
+        // that's the code the player keeps. (reading cleanseOutcome in this async
+        // callback intentionally doesn't make the effect depend on it.)
+        const showCleansed = !!this.analysis.cleanseOutcome() && cleanseScript(s) !== s;
+        this.tab.set(showCleansed ? 'cleansed' : 'original');
       });
     });
   }
