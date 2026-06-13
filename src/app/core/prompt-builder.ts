@@ -23,6 +23,9 @@ const STYLE_RULES = [
   'Keep it short: at most 10 sentences.',
   'Avoid technical jargon; if a technical word is unavoidable, explain it in a few words.',
   'Do not rewrite the script or give coding instructions — just explain it and say whether it is safe.',
+  'Finish your answer with a short verdict as a markdown heading, surrounded on both sides by a ' +
+    'traffic-light emoji that matches your conclusion: 🟢 if it is safe, 🟡 if it is uncertain or needs ' +
+    'caution, 🔴 if it is dangerous. For example: "## 🟢 Safe to keep 🟢".',
 ].join(' ');
 
 /**

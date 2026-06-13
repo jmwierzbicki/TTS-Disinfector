@@ -182,6 +182,8 @@ const purePrompt = buildPromptForGroup(pureGroup, INFECTED_PURE, { kind: 'worm' 
 check('worm prompt names the threat', purePrompt.includes('Self-replicating Lua worm'));
 check('worm prompt embeds the script', purePrompt.includes('--[[Object base code]]'));
 check('every prompt enforces short, plain answer', purePrompt.includes(STYLE) && purePrompt.includes('non-technical'));
+check('every prompt asks for a traffic-light verdict heading',
+  purePrompt.includes('🟢') && purePrompt.includes('🟡') && purePrompt.includes('🔴') && /verdict/i.test(purePrompt));
 
 // worm + extra (Verification needed): embeds the LEFTOVER and asks if it's dangerous
 const extraGroup = result.groups.find(g => g.extraCodeOutsidePayload)!;
