@@ -1,0 +1,100 @@
+<div class="mx-auto max-w-3xl px-4">
+
+  <!-- hero -->
+  <div class="fade-up text-center pt-10 sm:pt-16 pb-8">
+    <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-white">
+      Disinfect your <span class="gradient-text">TTS saves</span>
+    </h1>
+    <p class="mt-4 text-base sm:text-lg text-mist-400 max-w-xl mx-auto">
+      Scans every scripted object in a Tabletop Simulator save — bags in bags in decks —
+      for the self-replicating Lua worm, and removes it without touching your own code.
+    </p>
+  </div>
+
+  <!-- privacy banner -->
+  <div class="fade-up fade-up-1 glass-deep flex items-center gap-3 px-4 py-3 mb-6 text-sm">
+    <svg class="size-5 shrink-0 text-sev-clean" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
+    </svg>
+    <p class="text-mist-300">
+      <span class="font-semibold text-white">Everything runs locally in your browser.</span>
+      Your save file is never uploaded, stored remotely, or shared — analysis happens entirely on this machine.
+    </p>
+  </div>
+
+  <!-- dropzone -->
+  <div
+    class="dropzone fade-up fade-up-2 group"
+    [class.drag-over]="dragOver()"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
+    (click)="fileInput.click()"
+    (keydown.enter)="fileInput.click()"
+    (keydown.space)="$event.preventDefault(); fileInput.click()"
+    tabindex="0"
+    role="button"
+    aria-label="Upload a Tabletop Simulator save file"
+  >
+    <input #fileInput type="file" accept=".json,application/json" class="hidden" (change)="onFilePicked($event)">
+
+    <div class="flex flex-col items-center px-6 py-14 sm:py-20 text-center select-none">
+      <div class="relative mb-6">
+        <div class="absolute inset-0 rounded-full bg-electric-500/30 blur-2xl scale-150 pulse-glow"></div>
+        <div class="relative grid place-items-center size-20 rounded-2xl glass">
+          <svg class="size-9 text-electric-300 transition-transform duration-300 group-hover:-translate-y-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+      </div>
+
+      <p class="text-lg font-semibold text-white">
+        Drop your save file here
+      </p>
+      <p class="mt-2 text-sm text-mist-400">
+        or <span class="text-electric-300 font-medium">click to browse</span>
+        &nbsp;·&nbsp; or paste raw JSON with
+        <kbd class="px-1.5 py-0.5 rounded-md border border-white/15 bg-white/5 font-mono text-xs text-mist-200">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded-md border border-white/15 bg-white/5 font-mono text-xs text-mist-200">V</kbd>
+      </p>
+      <p class="mt-4 text-xs text-mist-500">
+        .json saves &amp; saved objects · Documents / My Games / Tabletop Simulator / Saves
+      </p>
+    </div>
+  </div>
+
+  <!-- error -->
+  @if (localError() || analysis.error(); as message) {
+    <div class="sev-critical fade-up mt-5 flex items-start gap-3 rounded-xl border border-sev-critical/30 bg-sev-critical/10 px-4 py-3 text-sm" role="alert">
+      <svg class="size-5 shrink-0 mt-0.5 text-sev-critical" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <div>
+        <p class="font-semibold text-white">Couldn't analyze that</p>
+        <p class="mt-0.5 text-mist-300">{{ message }}</p>
+      </div>
+    </div>
+  }
+
+  <!-- what we detect -->
+  <div class="fade-up fade-up-3 mt-10 mb-16">
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-mist-500 mb-3">What gets detected</h2>
+    <div class="grid gap-3 sm:grid-cols-2">
+      @for (pattern of patterns; track pattern.id) {
+        <div class="glass-deep px-4 py-3 sev-{{ pattern.severity }}">
+          <div class="flex items-center gap-2.5">
+            <span class="sev-dot"></span>
+            <span class="font-medium text-white text-sm">{{ pattern.name }}</span>
+            @if (pattern.cleanse) {
+              <span class="ml-auto text-[0.65rem] font-bold uppercase tracking-wider text-sev-clean bg-sev-clean/10 border border-sev-clean/30 rounded-full px-2 py-0.5">auto-cleanse</span>
+            }
+          </div>
+          <p class="mt-1.5 text-xs leading-relaxed text-mist-400">{{ pattern.description }}</p>
+        </div>
+      }
+    </div>
+    <p class="mt-4 text-xs text-mist-500">
+      The detector registry is a single TypeScript file — adding a new worm signature is a small,
+      self-contained pull request. See the README.
+    </p>
+  </div>
+</div>

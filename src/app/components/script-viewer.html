@@ -1,0 +1,116 @@
+<div class="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="Script viewer">
+  <div class="absolute inset-0 bg-black/65 backdrop-blur-sm" (click)="close.emit()"></div>
+
+  <div class="modal-shell relative w-full sm:max-w-4xl flex flex-col max-h-dvh sm:max-h-[88dvh] fade-up overflow-hidden">
+
+    <!-- header -->
+    <div class="flex items-start gap-3 px-5 py-4 border-b border-white/8 sev-{{ group().severity }}">
+      <span class="sev-dot mt-2"></span>
+      <div class="min-w-0 flex-1">
+        <h2 class="font-bold text-white truncate">
+          {{ group().findings[0].patternName }}
+          @if (group().findings.length > 1) {
+            <span class="text-mist-500 font-normal text-sm">+{{ group().findings.length - 1 }} more</span>
+          }
+        </h2>
+        <p class="text-xs text-mist-500 mt-0.5">
+          {{ group().scriptLength | number }} chars ·
+          {{ group().occurrences.length | number }} object{{ group().occurrences.length === 1 ? '' : 's' }} ·
+          <span class="font-mono">{{ group().scriptHash.slice(0, 16) }}…</span>
+        </p>
+      </div>
+      <button type="button" class="btn-ghost !px-2.5 !py-1 text-xs" (click)="close.emit()" aria-label="Close">✕</button>
+    </div>
+
+    <!-- tabs + actions -->
+    <div class="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-white/8">
+      <div class="flex items-center gap-1 p-1 rounded-xl bg-white/3 border border-white/8">
+        <button type="button" class="tab-btn" [class.active]="tab() === 'original'" (click)="tab.set('original')">
+          Original
+          @if (markedCount() > 0) {
+            <span class="text-[0.65rem] font-bold text-sev-critical bg-sev-critical/12 border border-sev-critical/30 rounded-full px-1.5">{{ markedCount() }} marked</span>
+          }
+        </button>
+        <button type="button" class="tab-btn" [class.active]="tab() === 'cleansed'" [disabled]="!cleansedDiffers()" (click)="tab.set('cleansed')">
+          Cleansed
+        </button>
+        <button type="button" class="tab-btn" [class.active]="tab() === 'objects'" (click)="tab.set('objects')">
+          Objects
+          <span class="text-[0.65rem] font-bold text-mist-300 bg-white/8 border border-white/12 rounded-full px-1.5">{{ group().occurrences.length | number }}</span>
+        </button>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2">
+        @if (tab() === 'original' && markedCount() > 0) {
+          <span class="hidden sm:inline-flex items-center gap-1.5 text-xs text-mist-400">
+            <span class="inline-block w-3 h-3 rounded-sm" style="background: rgb(251 77 109 / 0.4)"></span>
+            worm payload / matched code
+          </span>
+        }
+        @if (resolution().prompt) {
+          <button type="button" class="btn-glow !px-3 !py-1.5 text-xs" (click)="copyPrompt()"
+                  title="Copy a ready-made question (with this script) to paste into ChatGPT, Claude or any AI for a plain-language explanation.">
+            @if (copied()) {
+              <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Copied!
+            } @else {
+              <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy AI prompt
+            }
+          </button>
+        }
+        @if (group().severity !== 'critical' && !signatures.unavailable()) {
+          @if (group().trusted) {
+            <button type="button" class="btn-ghost !px-3 !py-1.5 text-xs" (click)="revoke()">Revoke trust</button>
+          } @else {
+            <button type="button" class="btn-ghost !px-3 !py-1.5 text-xs" (click)="trust()" title="Remember this exact script as safe on this device.">
+              <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              Mark as safe
+            </button>
+          }
+        }
+        @if (canApproveExtra()) {
+          <button type="button" class="btn-ghost !px-3 !py-1.5 text-xs" (click)="approve()"
+                  title="Approve the leftover code (shown on the Cleansed tab) as safe to keep.">
+            <svg class="size-3.5 text-sev-clean" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Approve remaining code
+          </button>
+        } @else if (group().cleansable && group().extraCodeOutsidePayload && group().approvedExtra) {
+          <span class="status-badge status-ok"><svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Approved</span>
+        }
+      </div>
+    </div>
+
+    <!-- content -->
+    <div class="flex-1 overflow-auto px-5 py-4">
+      @if (loading()) {
+        <p class="text-sm text-mist-500">Loading script…</p>
+      } @else if (tab() === 'original') {
+        <pre class="lua-code"><code [innerHTML]="originalHtml()"></code></pre>
+      } @else if (tab() === 'cleansed') {
+        @if (cleansed().trim().length === 0) {
+          <p class="text-sm text-sev-clean">After cleansing, this script is empty — it was nothing but worm payload.</p>
+        } @else {
+          <pre class="lua-code"><code [innerHTML]="cleansedHtml()"></code></pre>
+        }
+      } @else {
+        <p class="text-xs text-mist-400 mb-3">
+          This exact script appears on {{ group().occurrences.length | number }} object{{ group().occurrences.length === 1 ? '' : 's' }} in the save:
+        </p>
+        <ul class="space-y-1.5">
+          @for (occ of group().occurrences; track occ.nodeId; let i = $index) {
+            <li class="flex items-start gap-2.5 text-sm rounded-lg px-2.5 py-1.5 hover:bg-white/4">
+              <span class="select-none text-xs text-mist-600 font-mono tabular-nums pt-0.5 w-8 shrink-0 text-right">{{ i + 1 }}</span>
+              <svg class="size-4 shrink-0 mt-0.5 text-mist-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+              <span class="font-mono text-mist-200 break-all">
+                @for (segment of occ.pathSegments; track $index; let last = $last) {
+                  <span [class.text-white]="last">{{ segment }}</span>@if (!last) {<span class="text-mist-600"> › </span>}
+                }
+              </span>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  </div>
+</div>
