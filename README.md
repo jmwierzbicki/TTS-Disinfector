@@ -8,6 +8,11 @@ self-replicating Lua worm and removes it — without touching your own scripts.
 > the network**. The only thing persisted is your local list of trusted script
 > signatures (SHA-256 hashes), stored in this browser's IndexedDB.
 
+> **Always keep a backup of your save.** The cleaned file downloads as a separate
+> copy and your original is never modified, but no automated cleaner is perfect —
+> keep the original until you've confirmed the cleaned save loads correctly in
+> Tabletop Simulator.
+
 ## Features
 
 - **Three input methods** — drag & drop a `.json` save, click to pick a file, or paste raw JSON with `Ctrl+V`.
