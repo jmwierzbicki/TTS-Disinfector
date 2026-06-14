@@ -14,9 +14,9 @@ export type AppPhase = 'idle' | 'analyzing' | 'results';
 /** Omit that distributes over union members (plain Omit collapses the union). */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-/** `My Save.json` → `My Save.cleaned` (caller appends the extension). */
-function cleanedName(fileName: string): string {
-  return fileName.replace(/\.json$/i, '') + '.cleaned';
+/** Keep the original name so the cleaned file can drop straight back into TTS; ensure a .json extension. */
+function downloadName(fileName: string): string {
+  return /\.json$/i.test(fileName) ? fileName : `${fileName}.json`;
 }
 
 /**
@@ -110,7 +110,7 @@ export class AnalysisService {
 
     if (outcome.files.length === 1) {
       const file = outcome.files[0];
-      this.saveBlob(new Blob([file.json], { type: 'application/json' }), `${cleanedName(file.fileName)}.json`);
+      this.saveBlob(new Blob([file.json], { type: 'application/json' }), downloadName(file.fileName));
       return;
     }
 
@@ -119,7 +119,7 @@ export class AnalysisService {
     const zip = new JSZip();
     const used = new Map<string, number>();
     for (const file of outcome.files) {
-      let name = `${cleanedName(file.fileName)}.json`;
+      let name = downloadName(file.fileName);
       // Avoid collisions if two uploads share a name.
       const n = used.get(name) ?? 0;
       used.set(name, n + 1);
